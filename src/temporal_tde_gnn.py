@@ -6,7 +6,6 @@ from torch_geometric.utils import get_laplacian
 from torch_geometric.utils import add_self_loops, remove_self_loops
 
 
-
 class tdegnn_temporal(nn.Module):
     def __init__(self, nlayers, nhid, nin, nout, dropout=0.5, dropoutOC=0.5, h=0.1, timeEmbeddingFreqs=10,
                  sharedWeights=False,
@@ -156,11 +155,12 @@ class tdegnn_temporal(nn.Module):
         cgiter = 5
         Kd = self.Kappa[layer]  # (Tstate)
         Kd = F.hardtanh(Kd, max_val=1, min_val=0)
+        num_nodes = Tstate.shape[0] # edge_index.max().item() + 1  # TODO: is that okay?
         if explicit:
-            lap_edge_index, lap_edge_weight = get_laplacian(edge_index, normalization='sym', num_nodes=Tstate.shape[0],
-                                                            edge_weight=edge_attr)
+            lap_edge_index, lap_edge_weight = get_laplacian(edge_index, normalization='sym',
+                                                            num_nodes=num_nodes, edge_weight=edge_attr)
             lap_op = torch.sparse_coo_tensor(indices=lap_edge_index, values=lap_edge_weight,
-                                             size=(Tstate.shape[0], Tstate.shape[0]))
+                                             size=(num_nodes, num_nodes))
 
             LapY = torch.sparse.mm(lap_op, Tstate)
             return Tstate - self.h * LapY * Kd
@@ -211,7 +211,6 @@ class tdegnn_temporal(nn.Module):
         Tstate = Thist_embed[-1, :, :]
         T0Hist = Thist.clone()
 
-
         timeEmbedding0 = F.silu(self.initTimeEmbed(time_feature).squeeze())
         if timeEmbedding0.dim() == 1:
             timeEmbedding0 = timeEmbedding0.unsqueeze(-1)
@@ -241,7 +240,7 @@ class tdegnn_temporal(nn.Module):
                 C = C / C.sum()
                 C = C.unsqueeze(-1).unsqueeze(-1)
             else:
-                C = self.C[self.order-1]
+                C = self.C[self.order - 1]
                 C = C / C.sum()
                 C = C.unsqueeze(-1).unsqueeze(-1)
             if self.baseline:
@@ -253,7 +252,7 @@ class tdegnn_temporal(nn.Module):
             # Spatial Part:
             dState = self.reaction(Tstate1, Thist, T0Hist, layerIndex) - Tstate1
             Tstate = Tstate1 + dState
-            Tstate = self.diffusion(Tstate, Tstate, edge_index, layerIndex, explicit=self.explicit, edge_attr=edge_attr)
+            # Tstate = self.diffusion(Tstate, Tstate, edge_index, layerIndex, explicit=self.explicit, edge_attr=edge_attr)
             acts = torch.cat([acts[1:, :, :], Tstate.unsqueeze(0)], dim=0)
 
         Tstate = F.dropout(Tstate, p=self.dropoutOC, training=self.training)

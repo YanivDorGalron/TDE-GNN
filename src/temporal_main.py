@@ -1,3 +1,5 @@
+from src.snapshotify import TGBDataset
+
 try:
     from tqdm import tqdm, trange
 except ImportError:
@@ -7,15 +9,17 @@ except ImportError:
 
     def trange(iterable):
         return iterable
-import sys
 import os
+import sys
+
+os.environ['TORCH_USE_CUDS_DSA'] = '1'
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 sys.path.append(os.getcwd())
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch_geometric_temporal.dataset import ChickenpoxDatasetLoader, TwitterTennisDatasetLoader, \
-    PedalMeDatasetLoader, WikiMathsDatasetLoader  # , \
+from torch_geometric_temporal.dataset import ChickenpoxDatasetLoader, PedalMeDatasetLoader, WikiMathsDatasetLoader
 from torch_geometric_temporal.signal import temporal_signal_split
 
 printFiles = True
@@ -24,7 +28,10 @@ from src.temporal_tde_gnn import tdegnn_temporal
 
 parser = argparse.ArgumentParser(description="Temporal Benchmark")
 parser.add_argument(
-    "--user", default='l', type=str, help="user name")
+    "--user",
+    default='l',
+    type=str,
+    help="user name")
 parser.add_argument(
     "--dataset",
     default='wiki',
@@ -187,7 +194,7 @@ dropoutOC = 0.0
 dt = 0.1
 mha_dropout = 0.1
 n_channels = 64
-
+datastr = 'tgbn-genre'
 for splitIdx in trange(nsplits, desc='nsplits'):
     torch.manual_seed(splitIdx)
     np.random.seed(splitIdx)
@@ -200,11 +207,17 @@ for splitIdx in trange(nsplits, desc='nsplits'):
     elif datastr.lower() == 'wiki':
         loader = WikiMathsDatasetLoader()
         num_features = 8
+    elif 'tgbl' in datastr.lower() or 'tgbn' in datastr.lower():
+        num_features = 64
+        loader = TGBDataset(datastr.lower(), time_interval=100, num_features=64)
+        train_dataset, test_dataset = loader.get_dataset(train_ratio=0.9)
     else:
         print('no such dataset, exit.')
         exit()
-    dataset = loader.get_dataset()
-    train_dataset, test_dataset = temporal_signal_split(dataset, train_ratio=0.9)
+
+    if not isinstance(loader, TGBDataset):
+        dataset = loader.get_dataset()
+        train_dataset, test_dataset = temporal_signal_split(dataset, train_ratio=0.9)
     model = tdegnn_temporal(nlayers=args.layers, nhid=n_channels, nin=num_features, nout=num_output, dropout=dropout,
                             h=dt, sharedWeights=args.sharedWeights, addU0=args.addU0,
                             multiplicativeReaction=args.multLayers, explicit=args.explicit, dropoutOC=dropoutOC,
