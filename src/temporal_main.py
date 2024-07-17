@@ -1,5 +1,3 @@
-from src.snapshotify import TGBDataset
-
 try:
     from tqdm import tqdm, trange
 except ImportError:
@@ -16,6 +14,7 @@ os.environ['TORCH_USE_CUDS_DSA'] = '1'
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 sys.path.append(os.getcwd())
+from src.snapshotify import TGBDataset
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -259,6 +258,7 @@ for splitIdx in trange(nsplits, desc='nsplits'):
         cost = 0
         test_rmse = 0
         test_mape = 0
+        acc_list = []
         with torch.no_grad():
             for time, snapshot in enumerate(pbar := tqdm(test_dataset, desc='Testing')):
                 snapshot = snapshot.to(device)
@@ -273,8 +273,9 @@ for splitIdx in trange(nsplits, desc='nsplits'):
                 # Calculate accuracy
                 correct_predictions = (y_pred == y_true).float().sum()
                 accuracy = (correct_predictions / y_true.shape[0]).item()
+                acc_list.append(accuracy)
                 loss = criterion(y_hat.squeeze(), y_true)
-                pbar.set_postfix({'loss': loss.item(), 'acc': accuracy})
+                pbar.set_postfix({'loss': loss.item(), 'acc_mean': np.mean(acc_list)})
                 cost += loss.mean().item()
             cost = cost / (time + 1)
 
@@ -292,7 +293,7 @@ for splitIdx in trange(nsplits, desc='nsplits'):
         model.train()
         optimizer.zero_grad()
         cost = 0
-
+        acc_list = []
         if args.cumulative:
             for time, snapshot in enumerate(tqdm(train_dataset, desc='Training')):
                 snapshot = snapshot.to(device)
@@ -322,11 +323,12 @@ for splitIdx in trange(nsplits, desc='nsplits'):
                 # Calculate accuracy
                 correct_predictions = (y_pred == y_true).float().sum()
                 accuracy = (correct_predictions / y_true.shape[0]).item()
+                acc_list.append(accuracy)
                 loss = criterion(y_hat, y_true)
                 # loss = ((y_hat.squeeze() - y_true) ** 2).mean()
                 cost = loss  # .mean()
                 cost.backward()
-                pbar.set_postfix({'loss': loss.item(), 'acc': accuracy})
+                pbar.set_postfix({'loss': loss.item(), 'acc_list': np.mean(acc_list)})
 
                 optimizer.step()
                 train_cost += cost.item()
