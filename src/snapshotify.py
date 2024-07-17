@@ -1,13 +1,35 @@
 from collections import defaultdict
-
 import networkx as nx
+import numpy as np
 import pandas as pd
 import torch
 from tgb.linkproppred.dataset import LinkPropPredDataset
 from tgb.nodeproppred.dataset import NodePropPredDataset
 from torch_geometric.data import Data
-from torch_geometric_temporal.signal import StaticGraphTemporalSignal
 from tqdm import tqdm
+import random
+
+
+def add_negative_edges(G, edge_index):
+    all_nodes = list(range(edge_index.max().item() + 1))
+    num_edges = edge_index.size(1)
+    negative_edges = []
+    make_sure_not_positive = False
+    if make_sure_not_positive:
+        while len(negative_edges) < num_edges:
+            u, v = random.sample(all_nodes, 2)
+            if not G.has_edge(u, v):
+                negative_edges.append([u, v])
+        negative_edge_index = torch.tensor(negative_edges).t().contiguous()
+    else:
+        negative_edge_index = torch.from_numpy(np.random.choice(all_nodes, (2, num_edges))).contiguous()
+
+    negative_labels = torch.zeros(negative_edge_index.size(1))
+    positive_edges = torch.ones(negative_edge_index.size(1))
+
+    all_edge_index = torch.cat([edge_index, negative_edge_index], dim=1)
+    all_labels = torch.cat([positive_edges, negative_labels])
+    return all_edge_index, all_labels
 
 
 class TGBDataset:
@@ -17,8 +39,7 @@ class TGBDataset:
         elif 'tgbn' in name:
             self.loader = NodePropPredDataset(name=name, root="datasets", preprocess=True)
         else:
-            print('value error')
-            exit()
+            raise ValueError('Unsupported dataset name')
         self.num_features = num_features
         self.data = self.loader.full_data
         self.time_interval = time_interval
@@ -30,31 +51,27 @@ class TGBDataset:
             'source': self.data['sources'],
             'target': self.data['destinations'],
             'timestamp': self.data['timestamps'],
-            'edge_feat': self.data['edge_feat'],
             'edge_label': self.data['edge_label']
         })
-
+        edge_features = self.data['edge_feat']
         # Initialize variables
-        current_time = interaction_data['timestamp'].min()
-        end_time = interaction_data['timestamp'].max()
         snapshots = []
         pbar = tqdm(desc='Creating snapshots')
         random_node_pe = defaultdict(lambda: torch.randn(self.num_features))
 
-        while current_time < end_time:
-            next_time = current_time + self.time_interval
-            mask = (interaction_data['timestamp'] >= current_time) & (interaction_data['timestamp'] < next_time)
-            sub_df = interaction_data[mask]
+        while len(interaction_data) > 0:
+            sub_df = interaction_data.iloc[:self.time_interval]
             if len(sub_df) > 0:
                 G = nx.from_pandas_edgelist(sub_df, 'source', 'target')
                 edge_index = torch.tensor(list(G.edges)).t().contiguous()
-                x = torch.stack([random_node_pe[n] for n in G.nodes])
-                y = torch.ones(len(list(G.nodes)))
-                data = Data(x=x, edge_index=edge_index, y=y)  # TODO: add negative sampling
-                snapshots.append(data)
-                # TODO: change temporal encoding based on the graph snapshots spacing
+                all_x = torch.stack([random_node_pe[n] for n in list(range(edge_index.max().item() + 1))])
+                all_edge_index, all_labels = add_negative_edges(G, edge_index)
 
-            current_time = next_time
+                data = Data(x=all_x, edge_index=all_edge_index, y=all_labels, edge_feature=edge_features,
+                            start_time=sub_df.timestamp.min())
+                snapshots.append(data)
+
+            interaction_data = interaction_data.iloc[self.time_interval:]
             pbar.update()
 
         return snapshots

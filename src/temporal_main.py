@@ -178,7 +178,7 @@ datapath = os.path.join(datapath, args.dataset)
 
 split_test_costs = []
 num_features = 4
-num_output = 1
+num_output = 128
 lrReact = 1e-3
 lrDiffusion = 1e-3
 lrProj = 1e-3
@@ -194,7 +194,9 @@ dropoutOC = 0.0
 dt = 0.1
 mha_dropout = 0.1
 n_channels = 64
-datastr = 'tgbn-genre'
+datastr = 'tgbl-wiki'
+criterion = torch.nn.BCELoss()
+task = None
 for splitIdx in trange(nsplits, desc='nsplits'):
     torch.manual_seed(splitIdx)
     np.random.seed(splitIdx)
@@ -211,6 +213,7 @@ for splitIdx in trange(nsplits, desc='nsplits'):
         num_features = 64
         loader = TGBDataset(datastr.lower(), time_interval=100, num_features=64)
         train_dataset, test_dataset = loader.get_dataset(train_ratio=0.9)
+        task = 'link-prediction'
     else:
         print('no such dataset, exit.')
         exit()
@@ -240,7 +243,7 @@ for splitIdx in trange(nsplits, desc='nsplits'):
     bad_counter = 0
 
 
-    def createTE(time, nfreqs=10, lags=4):
+    def createTE(time, nfreqs=10, lags=4, snapshot=None):
         freqs = np.arange(1, nfreqs + 1).reshape(1, 1, nfreqs)
         time = np.arange(time * lags, time * (lags) + lags)
         time_step = np.expand_dims(time, -1) * freqs
@@ -257,15 +260,21 @@ for splitIdx in trange(nsplits, desc='nsplits'):
         test_rmse = 0
         test_mape = 0
         with torch.no_grad():
-            for time, snapshot in enumerate(tqdm(test_dataset, desc='Testing')):
+            for time, snapshot in enumerate(pbar := tqdm(test_dataset, desc='Testing')):
                 snapshot = snapshot.to(device)
-                snapshot = snapshot.to(device)
-                actual_time = time + len(train_dataset.targets)
-                time_feature = createTE(actual_time, nfreqs=10, lags=model.nin)
+                actual_time = snapshot.start_time
+                time_feature = createTE(actual_time, nfreqs=10, lags=model.nin, snapshot=snapshot)
+
                 y_hat = model(snapshot.x, time_feature, snapshot.edge_index, regression=True,
-                              edge_attr=snapshot.edge_attr)
+                              edge_attr=snapshot.edge_attr).sigmoid()
                 y_true = snapshot.y
-                loss = ((y_hat.squeeze() - y_true) ** 2).mean()
+                threshold = 0.5
+                y_pred = (y_hat > threshold).float()
+                # Calculate accuracy
+                correct_predictions = (y_pred == y_true).float().sum()
+                accuracy = (correct_predictions / y_true.shape[0]).item()
+                loss = criterion(y_hat.squeeze(), y_true)
+                pbar.set_postfix({'loss': loss.item(), 'acc': accuracy})
                 cost += loss.mean().item()
             cost = cost / (time + 1)
 
@@ -299,15 +308,26 @@ for splitIdx in trange(nsplits, desc='nsplits'):
             train_cost = 0
             train_rmse = 0
             train_mape = 0
-            for time, snapshot in enumerate(tqdm(train_dataset, desc='Training')):
+            for time, snapshot in enumerate(pbar := tqdm(train_dataset, desc='Training')):
+                time = snapshot.start_time
                 snapshot = snapshot.to(device)
-                time_feature = createTE(time=time, nfreqs=10, lags=model.nin)
+                time_feature = createTE(time=time, nfreqs=10, lags=model.nin, snapshot=snapshot)
                 y_hat = model(snapshot.x, time_feature, snapshot.edge_index, regression=True,
-                              edge_attr=snapshot.edge_attr)
+                              edge_attr=snapshot.edge_attr).sigmoid().squeeze()
                 y_true = snapshot.y
-                loss = ((y_hat.squeeze() - y_true) ** 2).mean()
+
+                threshold = 0.5
+                y_pred = (y_hat > threshold).float()
+
+                # Calculate accuracy
+                correct_predictions = (y_pred == y_true).float().sum()
+                accuracy = (correct_predictions / y_true.shape[0]).item()
+                loss = criterion(y_hat, y_true)
+                # loss = ((y_hat.squeeze() - y_true) ** 2).mean()
                 cost = loss  # .mean()
                 cost.backward()
+                pbar.set_postfix({'loss': loss.item(), 'acc': accuracy})
+
                 optimizer.step()
                 train_cost += cost.item()
                 optimizer.zero_grad()

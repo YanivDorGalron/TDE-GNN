@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from torch_geometric.nn import MLP
 from torch_geometric.nn.inits import glorot, zeros
 import torch.nn as nn
 from torch_geometric.utils import get_laplacian
@@ -35,6 +36,8 @@ class tdegnn_temporal(nn.Module):
         self.KopenHistBN = torch.nn.BatchNorm1d(nhid)
         self.KopenStateBN = torch.nn.BatchNorm1d(nhid)
         self.HistEmbed_conv1d = torch.nn.Conv1d(in_channels=1, out_channels=nhid, kernel_size=1)
+
+        self.last_layer = MLP(in_channels=2 * nout, hidden_channels=32, out_channels=1, num_layers=3)
 
         # Reaction parameters
         self.KR1 = torch.nn.ModuleList()
@@ -155,7 +158,7 @@ class tdegnn_temporal(nn.Module):
         cgiter = 5
         Kd = self.Kappa[layer]  # (Tstate)
         Kd = F.hardtanh(Kd, max_val=1, min_val=0)
-        num_nodes = Tstate.shape[0] # edge_index.max().item() + 1  # TODO: is that okay?
+        num_nodes = Tstate.shape[0]  # edge_index.max().item() + 1  # TODO: is that okay?
         if explicit:
             lap_edge_index, lap_edge_weight = get_laplacian(edge_index, normalization='sym',
                                                             num_nodes=num_nodes, edge_weight=edge_attr)
@@ -258,6 +261,8 @@ class tdegnn_temporal(nn.Module):
         Tstate = F.dropout(Tstate, p=self.dropoutOC, training=self.training)
         Tstate = self.Kclose(Tstate)
 
+        y_hat = self.last_layer(torch.cat([Tstate[edge_index[0]], Tstate[edge_index[1]]], axis=1))
+
         if regression:
-            return Tstate
-        return F.log_softmax(Tstate, dim=-1)
+            return y_hat
+        return F.log_softmax(y_hat, dim=-1)
