@@ -242,7 +242,7 @@ for splitIdx in trange(nsplits, desc='nsplits'):
         {'params': model.mha_factor, 'lr': lrmHA_factor, 'weight_decay': wdMHA_factor},
         {'params': model.C.parameters(), 'lr': lrMHA, 'weight_decay': 0},
         # add params of graph conv and last_layer
-        {'params': model.graphconv.parameters(), 'lr': lrDiffusion, 'weight_decay': 0},
+        {'params': model.conv1.parameters(), 'lr': lrDiffusion, 'weight_decay': 0},
         {'params': model.last_layer.parameters(), 'lr': lrReact, 'weight_decay': 0},
     ])
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.5)
