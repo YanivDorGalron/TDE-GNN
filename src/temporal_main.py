@@ -308,7 +308,7 @@ for splitIdx in trange(nsplits, desc='nsplits'):
     best_test_rmse = 999999
     best_test_mape = 10000
 
-    for epoch in range(num_epochs):
+    for epoch in trange(num_epochs, desc='Epochs'):
         model.train()
         optimizer.zero_grad()
         cost = 0
