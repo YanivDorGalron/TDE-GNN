@@ -274,7 +274,7 @@ for splitIdx in trange(nsplits, desc='nsplits'):
                 time_feature = createTE(actual_time, nfreqs=10, lags=model.nin, snapshot=snapshot)
 
                 y_hat = model(snapshot.x, time_feature, snapshot.edge_index, regression=True,
-                              edge_attr=snapshot.edge_attr).sigmoid()
+                              edge_attr=snapshot.edge_attr).sigmoid().squeeze()
                 y_true = snapshot.y
                 threshold = 0.5
                 y_pred = (y_hat > threshold).float()
