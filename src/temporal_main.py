@@ -271,7 +271,6 @@ for splitIdx in trange(nsplits, desc='nsplits'):
         acc_list = []
         with torch.no_grad():
             for time, snapshot in enumerate(pbar := tqdm(test_dataset, desc='Testing')):
-                snapshot = snapshot.to(device)
                 loss = run_model(acc_list, pbar, snapshot)
                 cost += loss.mean().item()
             cost = cost / (time + 1)
@@ -281,6 +280,7 @@ for splitIdx in trange(nsplits, desc='nsplits'):
 
 
     def run_model(acc_list, pbar, snapshot):
+        snapshot = snapshot.to(device)
         actual_time = snapshot.start_time
         time_feature = createTE(actual_time, nfreqs=10, lags=model.nin, snapshot=snapshot)
         y_hat = model(snapshot.x, time_feature, snapshot.edge_index, regression=True,
