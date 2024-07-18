@@ -206,7 +206,7 @@ class tdegnn_temporal(nn.Module):
 
         return X
 
-    def forward(self, T, time_feature, edge_index, regression=False, edge_attr=None):
+    def forward(self, T, time_feature, edge_index,pos_and_neg_edge_index, regression=False, edge_attr=None):
         T = self.conv1(T, edge_index)
         if not self.metrpems:
             T = F.dropout(T, p=self.dropout, training=self.training)
@@ -269,8 +269,7 @@ class tdegnn_temporal(nn.Module):
 
         Tstate = F.dropout(Tstate, p=self.dropoutOC, training=self.training)
         Tstate = self.Kclose(Tstate)
-
-        y_hat = self.last_layer(torch.cat([Tstate[edge_index[0]], Tstate[edge_index[1]]], axis=1))
+        y_hat = self.last_layer(torch.cat([Tstate[pos_and_neg_edge_index[0]], Tstate[pos_and_neg_edge_index[1]]], axis=1))
 
         if regression:
             return y_hat

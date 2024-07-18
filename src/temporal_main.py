@@ -220,7 +220,7 @@ for splitIdx in trange(nsplits, desc='nsplits'):
         num_features = 8
     elif 'tgbl' in datastr.lower() or 'tgbn' in datastr.lower():
         num_features = 64
-        loader = TGBDataset(datastr.lower(), time_interval=100, num_features=64)
+        loader = TGBDataset(datastr.lower(), time_interval=200, num_features=64)
         train_dataset, val_dataset, test_dataset = loader.create_snapshots()
         task = 'link-prediction'
     else:
@@ -287,9 +287,9 @@ for splitIdx in trange(nsplits, desc='nsplits'):
 
     def run_model(metric_dict, pbar, snapshot, split='train'):
         snapshot = snapshot.to(device)
-        actual_time = snapshot.start_time
+        actual_time = snapshot.start_time.item()
         time_feature = createTE(actual_time, nfreqs=10, lags=model.nin, snapshot=snapshot)
-        y_hat = model(snapshot.x, time_feature, snapshot.edge_index, regression=True,
+        y_hat = model(snapshot.x, time_feature, snapshot.edge_index, snapshot.pos_and_neg_edge_index, regression=True,
                       edge_attr=snapshot.edge_attr).sigmoid().squeeze()
         y_true = snapshot.y
         threshold = 0.5
@@ -304,10 +304,12 @@ for splitIdx in trange(nsplits, desc='nsplits'):
         if split in ['test', 'val']:
             for id in snapshot.id.unique():
                 # compute MRR
-                locations = torch.where(snapshot.id == id)
+                locations = torch.where(snapshot.id == id)[0]
+                if locations.max() > y_pred.shape[0]:
+                    print('problem')
                 input_dict = {
-                    "y_pred_pos": np.array([y_pred[locations[0], :].squeeze(dim=-1).cpu()]),
-                    "y_pred_neg": np.array(y_pred[locations[1:], :].squeeze(dim=-1).cpu()),
+                    "y_pred_pos": np.array([y_pred[locations[0]].cpu()]),
+                    "y_pred_neg": np.array(y_pred[locations[1:]].cpu()),
                     "eval_metric": [loader.metric],
                 }
                 metric_dict['mrr'].append(loader.evaluator.eval(input_dict)[loader.metric])
