@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 
 try:
@@ -268,10 +270,10 @@ for splitIdx in trange(nsplits, desc='nsplits'):
         cost = 0
         test_rmse = 0
         test_mape = 0
-        acc_list = []
+        metric_dict = defaultdict(list)
         with torch.no_grad():
             for time, snapshot in enumerate(pbar := tqdm(test_dataset, desc='Testing')):
-                loss = run_model(acc_list, pbar, snapshot)
+                loss = run_model(metric_dict, pbar, snapshot)
                 cost += loss.mean().item()
             cost = cost / (time + 1)
 
@@ -279,7 +281,7 @@ for splitIdx in trange(nsplits, desc='nsplits'):
         return cost, test_rmse, test_mape
 
 
-    def run_model(acc_list, pbar, snapshot):
+    def run_model(metric_dict, pbar, snapshot):
         snapshot = snapshot.to(device)
         actual_time = snapshot.start_time
         time_feature = createTE(actual_time, nfreqs=10, lags=model.nin, snapshot=snapshot)
@@ -291,9 +293,12 @@ for splitIdx in trange(nsplits, desc='nsplits'):
         accuracy = accuracy_score(y_true.cpu().numpy(), y_pred.cpu().numpy())
         precision = precision_score(y_true.cpu().numpy(), y_pred.cpu().numpy())
         recall = recall_score(y_true.cpu().numpy(), y_pred.cpu().numpy())
-        acc_list.append(accuracy)
+        metric_dict['accuracy'].append(accuracy)
+        metric_dict['precision'].append(precision)
+        metric_dict['recall'].append(recall)
         loss = criterion(y_hat.squeeze(), y_true)
-        pbar.set_postfix({'loss': loss.item(), 'acc_mean': np.mean(acc_list), 'precision': precision, 'recall': recall})
+        # report to pbar post_fix the average of all the metrics and the loss
+        pbar.set_postfix({k: np.mean(v) for k, v in metric_dict.items()}, loss=loss.item())
         return loss
 
 
@@ -307,7 +312,7 @@ for splitIdx in trange(nsplits, desc='nsplits'):
         model.train()
         optimizer.zero_grad()
         cost = 0
-        acc_list = []
+        metric_dict = defaultdict(list)
         if args.cumulative:
             for time, snapshot in enumerate(tqdm(train_dataset, desc='Training')):
                 snapshot = snapshot.to(device)
@@ -324,7 +329,7 @@ for splitIdx in trange(nsplits, desc='nsplits'):
             train_rmse = 0
             train_mape = 0
             for time, snapshot in enumerate(pbar := tqdm(train_dataset, desc='Training')):
-                loss = run_model(acc_list, pbar, snapshot)
+                loss = run_model(metric_dict, pbar, snapshot)
                 cost = loss  # .mean()
                 cost.backward()
 
