@@ -40,8 +40,8 @@ class tdegnn_temporal(nn.Module):
 
         self.last_layer = MLP(in_channels=2 * nout, hidden_channels=16, out_channels=1, num_layers=2)
         # replace graphconv with identity
-        self.conv1 = nn.Identity()
-        # self.conv1 = GraphConv(nin, nin)
+        # self.conv1 = nn.Identity()
+        self.conv1 = GraphConv(nin, nin)
 
         # Reaction parameters
         self.KR1 = torch.nn.ModuleList()
