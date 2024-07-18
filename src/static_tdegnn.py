@@ -6,7 +6,6 @@ import torch.nn as nn
 from torch_geometric.utils import get_laplacian
 
 
-
 class static_tdegnn(nn.Module):
     def __init__(self, nlayers, nhid, nin, nout, dropout=0.5, h=0.1, sharedWeights=False, multiplicativeReaction=True,
                  addU0=True, dropoutOC=0.5, explicit=False, useReaction=True, useDiffusion=True,

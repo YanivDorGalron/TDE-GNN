@@ -5,6 +5,7 @@ from torch_geometric.nn.inits import glorot, zeros
 import torch.nn as nn
 from torch_geometric.utils import get_laplacian
 from torch_geometric.utils import add_self_loops, remove_self_loops
+from torch_geometric.nn import GraphConv
 
 
 class tdegnn_temporal(nn.Module):
@@ -38,6 +39,7 @@ class tdegnn_temporal(nn.Module):
         self.HistEmbed_conv1d = torch.nn.Conv1d(in_channels=1, out_channels=nhid, kernel_size=1)
 
         self.last_layer = MLP(in_channels=2 * nout, hidden_channels=32, out_channels=1, num_layers=3)
+        self.conv1 = GraphConv(nin, nin)
 
         # Reaction parameters
         self.KR1 = torch.nn.ModuleList()
@@ -116,6 +118,13 @@ class tdegnn_temporal(nn.Module):
             self.C.append(torch.nn.Parameter(tmp))
 
     def reset_parameters(self):
+        # rest mlp layer and graph conv
+        torch.nn.init.kaiming_uniform_(self.last_layer.weight, nonlinearity='relu')
+        if self.last_layer.bias is not None:
+            torch.nn.init.zeros_(self.last_layer.bias)
+
+        self.conv1.reset_parameters()
+
         for i in range(self.nlayers):
             self.KR1[i].weight = torch.nn.Parameter(
                 torch.eye(n=self.KR1[i].weight.shape[0], m=self.KR1[i].weight.shape[1]) + 1e-2 * torch.randn(
@@ -199,6 +208,7 @@ class tdegnn_temporal(nn.Module):
         return X
 
     def forward(self, T, time_feature, edge_index, regression=False, edge_attr=None):
+        T = self.conv1(T, edge_index)
         if not self.metrpems:
             T = F.dropout(T, p=self.dropout, training=self.training)
         else:
