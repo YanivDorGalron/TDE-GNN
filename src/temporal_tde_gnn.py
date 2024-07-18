@@ -119,10 +119,7 @@ class tdegnn_temporal(nn.Module):
 
     def reset_parameters(self):
         # rest mlp layer and graph conv
-        torch.nn.init.kaiming_uniform_(self.last_layer.weight, nonlinearity='relu')
-        if self.last_layer.bias is not None:
-            torch.nn.init.zeros_(self.last_layer.bias)
-
+        self.last_layer.reset_parameters()
         self.conv1.reset_parameters()
 
         for i in range(self.nlayers):
