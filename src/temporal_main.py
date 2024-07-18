@@ -221,7 +221,7 @@ for splitIdx in trange(nsplits, desc='nsplits'):
     elif 'tgbl' in datastr.lower() or 'tgbn' in datastr.lower():
         num_features = 64
         loader = TGBDataset(datastr.lower(), time_interval=100, num_features=64)
-        train_dataset, test_dataset = loader.get_dataset(train_ratio=0.9)
+        train_dataset, val_dataset, test_dataset = loader.create_snapshots()
         task = 'link-prediction'
     else:
         print('no such dataset, exit.')
@@ -272,16 +272,20 @@ for splitIdx in trange(nsplits, desc='nsplits'):
         test_mape = 0
         metric_dict = defaultdict(list)
         with torch.no_grad():
-            for time, snapshot in enumerate(pbar := tqdm(test_dataset, desc='Testing')):
-                loss = run_model(metric_dict, pbar, snapshot)
+            for time, snapshot in enumerate(pbar := tqdm(val_dataset, desc='val')):
+                loss = run_model(metric_dict, pbar, snapshot, split='val')
                 cost += loss.mean().item()
-            cost = cost / (time + 1)
+            for time, snapshot in enumerate(pbar := tqdm(test_dataset, desc='test')):
+                loss = run_model(metric_dict, pbar, snapshot, split='test')
+                cost += loss.mean().item()
+            # cost = cost / (time + 1)
+            # cost = cost / (time + 1)
 
         model.train()
         return cost, test_rmse, test_mape
 
 
-    def run_model(metric_dict, pbar, snapshot):
+    def run_model(metric_dict, pbar, snapshot, split='train'):
         snapshot = snapshot.to(device)
         actual_time = snapshot.start_time
         time_feature = createTE(actual_time, nfreqs=10, lags=model.nin, snapshot=snapshot)
@@ -296,6 +300,18 @@ for splitIdx in trange(nsplits, desc='nsplits'):
         metric_dict['accuracy'].append(accuracy)
         metric_dict['precision'].append(precision)
         metric_dict['recall'].append(recall)
+
+        if split in ['test', 'val']:
+            for id in snapshot.id.unique():
+                # compute MRR
+                locations = torch.where(snapshot.id == id)
+                input_dict = {
+                    "y_pred_pos": np.array([y_pred[locations[0], :].squeeze(dim=-1).cpu()]),
+                    "y_pred_neg": np.array(y_pred[locations[1:], :].squeeze(dim=-1).cpu()),
+                    "eval_metric": [loader.metric],
+                }
+                metric_dict['mrr'].append(loader.evaluator.eval(input_dict)[loader.metric])
+
         loss = criterion(y_hat.squeeze(), y_true)
         # report to pbar post_fix the average of all the metrics and the loss
         pbar.set_postfix({k: np.mean(v) for k, v in metric_dict.items()}, loss=loss.item())

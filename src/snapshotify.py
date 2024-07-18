@@ -81,17 +81,25 @@ class TGBDataset:
             all_x = torch.stack([self.random_node_pe[n] for n in range(edge_index.max().item() + 1)])
             if split == 'train':
                 all_edge_index, all_labels = add_negative_edges(G, edge_index)
+                all_id = torch.cat([torch.arange(len(src)), torch.arange(len(src))])
             elif split in ['test', 'val']:
+                all_id = torch.arange(len(src))
                 neg_batch_list = self.neg_sampler.query_batch(src, pos_dst, t, split_mode=split)
+                all_edge_index = edge_index.clone()  # Clone to preserve original edges
+                all_labels = torch.zeros(all_edge_index.size(1), dtype=torch.float)  # Placeholder labels
                 for idx, neg_batch in enumerate(neg_batch_list):
-                    src = torch.full((1 + len(neg_batch),), src[idx])
-                    dst = torch.tensor(np.concatenate(([np.array([pos_dst[idx]]), np.array(neg_batch)]), axis=0))
-
-                    # concat src and dst couples of all and then add it to edge_index to create all_edge_index and all_labels
+                    src_batch = torch.full((len(neg_batch),), src[idx])
+                    dst_batch = torch.tensor(neg_batch)
+                    new_edges = torch.stack([src_batch, dst_batch], dim=0)
+                    id = torch.full((len(neg_batch),), idx)
+                    all_id = torch.cat([all_id, id])
+                    all_edge_index = torch.cat([all_edge_index, new_edges], dim=1)
+                    all_edge_index = torch.cat([all_edge_index, new_edges], dim=1)
+                    all_labels = torch.cat([all_labels, torch.zeros(len(neg_batch), dtype=torch.float)])
             else:
-                raise ValueError('not valid split')
+                raise ValueError('Invalid split mode.')
 
-            data = Data(x=all_x, edge_index=all_edge_index, y=all_labels, start_time=t[-1], msg=msg)
+            data = Data(x=all_x, edge_index=all_edge_index, y=all_labels, start_time=t[-1], msg=msg, id=all_id)
             snapshots.append(data)
 
         return snapshots
