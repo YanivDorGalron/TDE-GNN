@@ -38,7 +38,7 @@ class tdegnn_temporal(nn.Module):
         self.KopenStateBN = torch.nn.BatchNorm1d(nhid)
         self.HistEmbed_conv1d = torch.nn.Conv1d(in_channels=1, out_channels=nhid, kernel_size=1)
 
-        self.last_layer = MLP(in_channels=2 * nout, hidden_channels=32, out_channels=1, num_layers=3)
+        self.last_layer = MLP(in_channels=2 * nout, hidden_channels=16, out_channels=1, num_layers=2)
         self.conv1 = GraphConv(nin, nin)
 
         # Reaction parameters

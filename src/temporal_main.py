@@ -127,6 +127,12 @@ parser.add_argument(
     type=int,
     help='if to save to log file or print',
 )
+parser.add_argument(
+    "--device",
+    default=0,
+    type=int,
+    help='gpu id',
+)
 
 
 def mae(pred, gt):
@@ -160,7 +166,7 @@ def mape(pred, gt):
 
 
 args = parser.parse_args()
-device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+device = f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu'
 nsplits = 10
 num_epochs = 100
 datastr = args.dataset
