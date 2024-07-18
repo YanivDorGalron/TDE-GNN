@@ -1,3 +1,5 @@
+from sklearn.metrics import accuracy_score, precision_score, recall_score
+
 try:
     from tqdm import tqdm, trange
 except ImportError:
@@ -270,25 +272,29 @@ for splitIdx in trange(nsplits, desc='nsplits'):
         with torch.no_grad():
             for time, snapshot in enumerate(pbar := tqdm(test_dataset, desc='Testing')):
                 snapshot = snapshot.to(device)
-                actual_time = snapshot.start_time
-                time_feature = createTE(actual_time, nfreqs=10, lags=model.nin, snapshot=snapshot)
-
-                y_hat = model(snapshot.x, time_feature, snapshot.edge_index, regression=True,
-                              edge_attr=snapshot.edge_attr).sigmoid().squeeze()
-                y_true = snapshot.y
-                threshold = 0.5
-                y_pred = (y_hat > threshold).float()
-                # Calculate accuracy
-                correct_predictions = (y_pred == y_true).float().sum()
-                accuracy = (correct_predictions / y_true.shape[0]).item()
-                acc_list.append(accuracy)
-                loss = criterion(y_hat.squeeze(), y_true)
-                pbar.set_postfix({'loss': loss.item(), 'acc_mean': np.mean(acc_list)})
+                loss = run_model(acc_list, pbar, snapshot)
                 cost += loss.mean().item()
             cost = cost / (time + 1)
 
         model.train()
         return cost, test_rmse, test_mape
+
+
+    def run_model(acc_list, pbar, snapshot):
+        actual_time = snapshot.start_time
+        time_feature = createTE(actual_time, nfreqs=10, lags=model.nin, snapshot=snapshot)
+        y_hat = model(snapshot.x, time_feature, snapshot.edge_index, regression=True,
+                      edge_attr=snapshot.edge_attr).sigmoid().squeeze()
+        y_true = snapshot.y
+        threshold = 0.5
+        y_pred = (y_hat > threshold).float()
+        accuracy = accuracy_score(y_true.cpu().numpy(), y_pred.cpu().numpy())
+        precision = precision_score(y_true.cpu().numpy(), y_pred.cpu().numpy())
+        recall = recall_score(y_true.cpu().numpy(), y_pred.cpu().numpy())
+        acc_list.append(accuracy)
+        loss = criterion(y_hat.squeeze(), y_true)
+        pbar.set_postfix({'loss': loss.item(), 'acc_mean': np.mean(acc_list), 'precision': precision, 'recall': recall})
+        return loss
 
 
     best_test_cost = 9999999
@@ -318,25 +324,9 @@ for splitIdx in trange(nsplits, desc='nsplits'):
             train_rmse = 0
             train_mape = 0
             for time, snapshot in enumerate(pbar := tqdm(train_dataset, desc='Training')):
-                time = snapshot.start_time
-                snapshot = snapshot.to(device)
-                time_feature = createTE(time=time, nfreqs=10, lags=model.nin, snapshot=snapshot)
-                y_hat = model(snapshot.x, time_feature, snapshot.edge_index, regression=True,
-                              edge_attr=snapshot.edge_attr).sigmoid().squeeze()
-                y_true = snapshot.y
-
-                threshold = 0.5
-                y_pred = (y_hat > threshold).float()
-
-                # Calculate accuracy
-                correct_predictions = (y_pred == y_true).float().sum()
-                accuracy = (correct_predictions / y_true.shape[0]).item()
-                acc_list.append(accuracy)
-                loss = criterion(y_hat, y_true)
-                # loss = ((y_hat.squeeze() - y_true) ** 2).mean()
+                loss = run_model(acc_list, pbar, snapshot)
                 cost = loss  # .mean()
                 cost.backward()
-                pbar.set_postfix({'loss': loss.item(), 'acc_list': np.mean(acc_list)})
 
                 optimizer.step()
                 train_cost += cost.item()
