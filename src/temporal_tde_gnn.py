@@ -39,7 +39,9 @@ class tdegnn_temporal(nn.Module):
         self.HistEmbed_conv1d = torch.nn.Conv1d(in_channels=1, out_channels=nhid, kernel_size=1)
 
         self.last_layer = MLP(in_channels=2 * nout, hidden_channels=16, out_channels=1, num_layers=2)
-        self.conv1 = GraphConv(nin, nin)
+        # replace graphconv with identity
+        self.conv1 = nn.Identity()
+        # self.conv1 = GraphConv(nin, nin)
 
         # Reaction parameters
         self.KR1 = torch.nn.ModuleList()
